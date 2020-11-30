@@ -1,22 +1,23 @@
 package server;
 
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.time.LocalDateTime;
 
 public class ClientHandler {
     private Socket socket;
-    private PrintWriter out;
     private String name;
+    private PrintWriter out;
 
-
-    public ClientHandler(Socket socket, PrintWriter out) {
+    public ClientHandler(Socket socket, String name) {
         this.socket = socket;
-        this.out = out;
-    }
-
-    public PrintWriter getOut() {
-        return out;
+        this.name = name;
+        try {
+            this.out = new PrintWriter(socket.getOutputStream());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public synchronized void sendMessageToClient(String name, String msg) {
@@ -24,4 +25,5 @@ public class ClientHandler {
             out.println(date + " " + name + ": " + msg);
             out.flush();
     }
+
 }

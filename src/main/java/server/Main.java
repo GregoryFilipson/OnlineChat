@@ -3,45 +3,42 @@ package server;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.time.LocalDateTime;
 import java.util.*;
 
 public class Main {
-
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         final List<ClientHandler> listActiveClients = new ArrayList<>();
         final Logger logger = Logger.getInstance();
         File setPortSocket = new File("settings.txt");
-        ServerSocket serverSocket = null;
-        try {
-            serverSocket = new ServerSocket(setPortFromFile(setPortSocket));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        ServerSocket serverSocket = new ServerSocket(setPortFromFile(setPortSocket));
         System.out.println("Сервер чата запущен!");
         while (true) {
-            try (Socket socket = serverSocket.accept();
-                 PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-                 BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
-                new Thread(() -> {
-                    ClientHandler clientHandler = new ClientHandler(socket, out);
-                    listActiveClients.add(clientHandler);
+            Socket socket = serverSocket.accept();
+            new Thread(() -> {
+                try (PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+                     BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
                     String name = "";
+                    ClientHandler clientHandler = null;
                     try {
                         name = in.readLine();
-                        for (ClientHandler client: listActiveClients) {
-                            client.getOut().println(name + " зашел в чат!");
-                        }
+                        clientHandler = new ClientHandler(socket, name);
+                        addClient(clientHandler, listActiveClients);
+                        sendToAllConnections(name, "вошел в чат!", listActiveClients);
+
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
-                    String msg = null;
+                    String msg = "";
                     while (true) {
                         try {
                             msg = in.readLine();
                         } catch (IOException e) {
                             e.printStackTrace();
                         }
-                        if (msg.equals("/exit")) {
+                        if ("/exit".equals(msg)) {
+                            assert clientHandler != null;
+                            sendToAllConnections(name, "вышел из чата!", listActiveClients);
                             removeClient(clientHandler, listActiveClients);
                             try {
                                 in.close();
@@ -52,13 +49,16 @@ public class Main {
                             }
                             break;
                         }
-                        sendToAllConnections(name, msg, listActiveClients);
-                        logger.log(msg);
+                        if (!msg.equals("")) {
+                            sendToAllConnections(name, msg, listActiveClients);
+                            LocalDateTime date = LocalDateTime.now();
+                            logger.log(date + " " + name + ": " + msg);
+                        }
                     }
-                }).start();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }).start();
         }
     }
 
@@ -73,13 +73,18 @@ public class Main {
         return Integer.parseInt(portSocket);
     }
 
-    public static void sendToAllConnections(String name, String msg, List<ClientHandler> list) {
-        for (int i = 0; i < list.size(); i++) {
-            list.get(i).sendMessageToClient(name, msg);
+    public static synchronized void sendToAllConnections(String name, String msg,
+                                                         List<ClientHandler> list) {
+        for (ClientHandler clientHandler : list) {
+            clientHandler.sendMessageToClient(name, msg);
         }
     }
 
     public static synchronized void removeClient(ClientHandler clientHandler, List<ClientHandler> list) {
         list.remove(clientHandler);
+    }
+
+    public static synchronized void addClient(ClientHandler clientHandler, List<ClientHandler> list) {
+        list.add(clientHandler);
     }
 }
